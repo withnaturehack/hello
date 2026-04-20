@@ -173,7 +173,7 @@ export default function MessCardTabScreen() {
   const [deactivating, setDeactivating] = useState(false);
   const requiresShift = user?.role === "volunteer" || user?.role === "admin" || user?.role === "coordinator";
   const hasSearchQuery = searchQuery.trim().length > 0;
-  const STUDENTS_FETCH_LIMIT = 5000;
+  const STUDENTS_FETCH_LIMIT = 200;
 
   useFocusEffect(
     useCallback(() => {
@@ -205,17 +205,17 @@ export default function MessCardTabScreen() {
       const chunk = await request(`/students?limit=${STUDENTS_FETCH_LIMIT}&offset=0${searchParam}`);
       return Array.isArray(chunk) ? chunk : (chunk?.students || chunk?.data || []);
     },
-    enabled: canWork && isFocused,
-    refetchInterval: isFocused ? 20000 : false,
-    staleTime: 8000,
-    refetchOnMount: "always",
-    refetchOnWindowFocus: true,
-    refetchOnReconnect: true,
-    gcTime: 10 * 60 * 1000,
-    placeholderData: keepPreviousData,
+    enabled: canWork && isFocused && hasSearchQuery,
+    refetchInterval: isFocused && hasSearchQuery ? 30000 : false,
+    staleTime: 15000,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    gcTime: 5 * 60 * 1000,
+    placeholderData: hasSearchQuery ? keepPreviousData : undefined,
   });
 
-  const rawStudents = (Array.isArray(data) ? data : data?.students || []) as any[];
+  const rawStudents = (hasSearchQuery ? (Array.isArray(data) ? data : data?.students || []) : []) as any[];
   const students = useMemo(() => {
     const map = new Map<string, any>();
     for (const s of rawStudents) {
@@ -296,7 +296,9 @@ export default function MessCardTabScreen() {
         <View>
           <Text style={[styles.title, { color: theme.text }]}>Mess Card</Text>
           <Text style={[styles.sub, { color: theme.textSecondary }]}>
-            Total {students.length} · Given {givenCount} · Pending {pendingCount}
+            {hasSearchQuery
+              ? `Found ${students.length} · Given ${givenCount} · Pending ${pendingCount}`
+              : "Search to view students"}
           </Text>
         </View>
       </View>
@@ -352,46 +354,66 @@ export default function MessCardTabScreen() {
         </Pressable>
       </View>
 
-      {!hasSearchQuery && students.length === 0 && !isLoading && canWork && (
+      {!hasSearchQuery && canWork && (
         <Text style={{ color: theme.textSecondary, fontSize: 12, fontFamily: "Inter_400Regular", paddingHorizontal: 16, paddingBottom: 6 }}>
-          No students found. Try a different search.
+          Enter a name, roll number, or room and tap Search.
         </Text>
       )}
 
-      {/* Filter tabs */}
-      <View style={[styles.filterRow, { borderBottomColor: theme.border }]}>
-        {(["all", "given", "pending"] as const).map((f) => (
-          <Pressable
-            key={f}
-            onPress={() => setFilter(f)}
-            style={[styles.filterBtn, {
-              borderColor: filter === f
-                ? (f === "given" ? "#22c55e" : f === "pending" ? "#f59e0b" : theme.tint)
-                : theme.border,
-              backgroundColor: filter === f
-                ? (f === "given" ? "#22c55e20" : f === "pending" ? "#f59e0b20" : theme.tint + "20")
-                : theme.surface,
-            }]}
-          >
-            <Text style={[styles.filterText, {
-              color: filter === f
-                ? (f === "given" ? "#22c55e" : f === "pending" ? "#f59e0b" : theme.tint)
-                : theme.textSecondary,
-            }]}>
-              {f === "all" ? `All (${students.length})` : f === "given" ? `Given (${givenCount})` : `Pending (${pendingCount})`}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
+      {/* Filter tabs — only show when a search has results */}
+      {hasSearchQuery && (
+        <View style={[styles.filterRow, { borderBottomColor: theme.border }]}>
+          {(["all", "given", "pending"] as const).map((f) => (
+            <Pressable
+              key={f}
+              onPress={() => setFilter(f)}
+              style={[styles.filterBtn, {
+                borderColor: filter === f
+                  ? (f === "given" ? "#22c55e" : f === "pending" ? "#f59e0b" : theme.tint)
+                  : theme.border,
+                backgroundColor: filter === f
+                  ? (f === "given" ? "#22c55e20" : f === "pending" ? "#f59e0b20" : theme.tint + "20")
+                  : theme.surface,
+              }]}
+            >
+              <Text style={[styles.filterText, {
+                color: filter === f
+                  ? (f === "given" ? "#22c55e" : f === "pending" ? "#f59e0b" : theme.tint)
+                  : theme.textSecondary,
+              }]}>
+                {f === "all" ? `All (${students.length})` : f === "given" ? `Given (${givenCount})` : `Pending (${pendingCount})`}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      )}
 
-      {isLoading && students.length === 0 ? (
+      {!hasSearchQuery && canWork ? (
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingBottom: 80, gap: 12 }}>
+          <Feather name="search" size={48} color={theme.textTertiary} />
+          <Text style={{ color: theme.textSecondary, fontSize: 15, fontFamily: "Inter_600SemiBold" }}>Search to load students</Text>
+          <Text style={{ color: theme.textTertiary, fontSize: 13, fontFamily: "Inter_400Regular", textAlign: "center", paddingHorizontal: 32 }}>
+            Type a name, roll number, or room number above and tap Search.
+          </Text>
+        </View>
+      ) : isLoading && students.length === 0 ? (
         <ActivityIndicator color={theme.tint} style={{ marginTop: 24 }} />
       ) : (
         <FlatList
           data={visibleStudents}
           keyExtractor={(item) => item.id}
           contentContainerStyle={{ paddingBottom: Platform.OS === "web" ? 80 : 90 }}
+          initialNumToRender={20}
+          maxToRenderPerBatch={20}
+          windowSize={7}
+          removeClippedSubviews={true}
           ItemSeparatorComponent={() => <View style={{ height: 1, backgroundColor: theme.border, marginLeft: 66 }} />}
+          ListEmptyComponent={() => hasSearchQuery ? (
+            <View style={{ alignItems: "center", justifyContent: "center", paddingVertical: 60, gap: 12 }}>
+              <Feather name="users" size={40} color={theme.textTertiary} />
+              <Text style={{ color: theme.textSecondary, fontSize: 14, fontFamily: "Inter_400Regular" }}>No students found</Text>
+            </View>
+          ) : null}
           renderItem={({ item }) => (
             <Pressable
               onPress={() => openStudent(item)}

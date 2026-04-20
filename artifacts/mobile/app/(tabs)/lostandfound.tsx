@@ -182,6 +182,11 @@ function AttendanceModal({
     doAction("checkout", () => request(`/checkins/${checkin.id}/checkout`, { method: "PATCH", body: JSON.stringify({}) }));
   };
 
+  const revokeCheckin = () =>
+    doAction("revoke", () =>
+      request(`/checkins/${student.id}/today`, { method: "DELETE" })
+    );
+
   function formatTime(ts: string | null): string {
     if (!ts) return "—";
     return new Date(ts).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour12: true, hour: "2-digit", minute: "2-digit" });
@@ -374,6 +379,26 @@ function AttendanceModal({
               )}
               {isCheckedIn && noItemsGiven && !isCheckedOut && (
                 <Text style={[styles.sectionHint, { color: "#111827" }]}>No inventory taken, checkout is enabled</Text>
+              )}
+
+              {/* REVOKE CHECK-IN */}
+              {hasAttendanceSession && (
+                <>
+                  <View style={[styles.hintBox, { backgroundColor: "#ef444410", borderColor: "#ef444430", marginTop: 12 }]}>
+                    <Feather name="alert-triangle" size={13} color="#ef4444" />
+                    <Text style={[styles.hintText, { color: "#ef4444" }]}>Revoke resets today's check-in and all inventory. This cannot be undone.</Text>
+                  </View>
+                  <View style={styles.stepRow}>
+                    <StepButton
+                      label="Revoke Check-in"
+                      icon="trash-2"
+                      danger={true}
+                      onPress={revokeCheckin}
+                      loading={actionLoading === "revoke"}
+                      theme={theme}
+                    />
+                  </View>
+                </>
               )}
 
             </>
